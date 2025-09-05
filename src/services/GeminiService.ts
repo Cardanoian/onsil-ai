@@ -390,6 +390,8 @@ Here is the script to analyze:`;
 
       const script = await this.getScript(userPrompt);
       const voiceConfigs = await this.getVoiceConfigs(script);
+      console.log(script);
+      console.log(voiceConfigs);
 
       const response = await this.ai.models.generateContent({
         model: this.models.audio,
