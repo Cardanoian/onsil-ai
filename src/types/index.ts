@@ -1,7 +1,7 @@
 // src/types/index.ts
 
 export interface Message {
-  role: 'user' | 'assistant';
+  role: 'user' | 'model';
   content: string;
   file?: string;
 }

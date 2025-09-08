@@ -56,17 +56,12 @@ export class ChatController {
       role: 'user',
       content: message,
       timestamp,
-      file: fileData
-        ? {
-            name: fileData.file.name,
-            content: fileData.content,
-          }
-        : undefined,
+      file: fileData,
     });
 
     try {
       const assistantMessageId = this.model.addMessage({
-        role: 'assistant',
+        role: 'model',
         content: '',
         timestamp: new Date().toISOString(),
       });
@@ -87,7 +82,7 @@ export class ChatController {
 
       switch (type) {
         case 'image':
-          await this.handleImage(assistantMessageId, updatedMessages, fileData);
+          await this.handleImage(assistantMessageId, updatedMessages);
           return;
         case 'audio':
           await this.handleAudio(assistantMessageId, updatedMessages);
@@ -107,8 +102,8 @@ export class ChatController {
         return;
       }
       this.model.addMessage({
-        role: 'assistant',
-        content: '오류가 발생했습니다. 다시 시도해 주세요.',
+        role: 'model',
+        content: `오류가 발생했습니다. 다시 시도해 주세요.\n\n${error}`,
         timestamp: new Date().toISOString(),
       });
     }
@@ -127,28 +122,31 @@ export class ChatController {
 
   private async handleImage(
     assistantMessageId: string,
-    updatedMessages: Message[],
-    fileData?: FileData
+    updatedMessages: Message[]
   ) {
-    const isImageFile =
-      fileData && fileData.file && /(\.jpe?g|\.png)$/i.test(fileData.file.name);
-
-    if (isImageFile) {
-      this.model.updateMessage(
-        assistantMessageId,
-        '이미지 변환 기능은 지원하지 않습니다.'
-      );
-      return;
-    }
     this.model.updateMessage(
       assistantMessageId,
       '🖼️ 이미지를 생성 중입니다... 잠시만 기다려주세요!'
     );
-    const imageUrl = await this.geminiService.generateImage(updatedMessages);
-    this.model.updateMessage(
-      assistantMessageId,
-      `![이미지 생성 결과](${imageUrl})`
-    );
+    const { text, imageBase64, format } =
+      await this.geminiService.generateImage(updatedMessages);
+
+    const imageFileName = `image_${Date.now()}.${format}`;
+    const imageMime = `image/${format}`;
+    const imageDataUrl = `data:${imageMime};base64,${imageBase64}`;
+
+    // 임시 File 객체 생성 (이미지 파일용)
+    const imageFile = new File([imageBase64], imageFileName, {
+      type: imageMime,
+    });
+
+    this.model.updateMessage(assistantMessageId, text, {
+      file: imageFile,
+      name: imageFileName,
+      content: imageDataUrl,
+      mime: imageMime,
+      path: imageFileName, // 임시 경로로 파일명 사용
+    });
   }
 
   private async handleAudio(
@@ -174,10 +172,17 @@ export class ChatController {
       // 스크립트와 오디오를 함께 표시
       const displayText = `**생성된 스크립트:**\n\n${text}\n\n**🎵 오디오 파일이 생성되었습니다!**`;
 
+      // 임시 File 객체 생성 (오디오 파일용)
+      const audioFile = new File([audioBase64], audioFileName, {
+        type: audioMime,
+      });
+
       this.model.updateMessage(assistantMessageId, displayText, {
+        file: audioFile,
         name: audioFileName,
         content: audioDataUrl,
         mime: audioMime,
+        path: audioFileName, // 임시 경로로 파일명 사용
       });
     } catch (error) {
       this.model.updateMessage(

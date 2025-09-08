@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { Content, GoogleGenAI, SpeakerVoiceConfig } from '@google/genai';
 import { Message } from '../models/types';
 
 export class GeminiService {
@@ -27,23 +27,6 @@ export class GeminiService {
   - 예시나 비유, 이모지 포함
   - 수식은 반드시 $ 또는 $$로 표현`;
 
-  private imageScriptPrompt: string = `[역할]
-당신은 사용자가 제공한 텍스트를 기반으로 '이미지 생성용 프롬프트'만 작성하는 AI 프롬프트 엔지니어입니다.
-
-[행동 수칙]
-1. 오직 사용자의 마지막 요청을 반영한 이미지 프롬프트 본문만 출력합니다.
-2. 아래 항목은 어떠한 경우에도 출력하지 않습니다.
-- 제목‧인사말‧설명‧맺음말 등 메타 정보
-- "이미지 생성이 불가합니다"‧"추가 설명이 필요할까요?" 같은 부가 안내·사과·제약 언급
-- 불필요한 반복, 과도한 존댓말, 어색하거나 기계적인 어투
-3. Markdown 형식으로, 단락 구분 없이 한 줄로 이어 작성합니다.
-4. 주제·주요 대상·스타일·분위기·색감·구도 등 핵심 시각 요소를 구체적이고 간결하게 포함합니다.
-5. 대화 내용을 번역하지 말고, 해당 언어를 그대로 사용합니다.
-
-[출력 형식]
-1. 이미지 프롬프트 본문 한 줄만 출력
-2. 예시·주석·설명 텍스트 절대 포함 금지`;
-
   private audioScriptPrompt: string = `You are an AI scriptwriter specializing in creating scripts for voice synthesis. Your task is to write a detailed, natural-sounding, and engaging script based on the user's request.
 
 Follow these rules:
@@ -53,10 +36,19 @@ Follow these rules:
 4. Consider tone and context: Ensure the dialogue and descriptions match the requested tone (e.g., informative, casual, exciting, formal).
 5. Use formatting: Use clear formatting to distinguish between dialogue and scene descriptions.
 6. Avoid stating your purpose: Do not mention that you are an AI or explain the process. Simply provide the finished script.
+7. Absolutely do not include anything other than dialogue (no descriptions, no explanations).
 
-User's Request:`;
+# Example
+Liam: 안녕!
+Anthony: 반가워 오랜만이야. 잘 지내?
+David: 정말 오랜만이다!
 
-  private voiceConfigPrompt: string = `You are a helpful assistant for an AI voice generation application. Your task is to analyze a given script and generate a JSON array of speaker configurations. Each configuration should contain a speaker name and a 'voiceConfig' object.
+User's Request:
+`;
+
+  private voiceConfigPrompt: string = `You are a helpful assistant for an AI voice generation application. 
+  Your task is to analyze a given script and generate a JSON array of speaker configurations. 
+  Each configuration should contain a speaker name and a 'voiceConfig' object.
 
 Here are the available voices:
 {
@@ -102,12 +94,28 @@ You must follow these rules:
 3. Ensure uniqueness: Assign a unique voice to each speaker. Do not reuse a voice for multiple speakers.
 4. Format the output: Your response must be a single, valid JSON array. Each object in the array should have two keys: 'speaker' (the name of the speaker) and 'voiceConfig'. The 'voiceConfig' object must contain a 'prebuiltVoiceConfig' with a 'voiceName' key, and the value must be one of the voice names from the provided list.
 
-Here is the script to analyze:`;
+# Example
+[
+  {
+    speaker: "Dr. Anya",
+    voiceConfig: {
+      prebuiltVoiceConfig: {voiceName: "Kore"},
+    }
+  },
+  {
+    speaker: "Liam",
+    voiceConfig: {
+      prebuiltVoiceConfig: {voiceName: "Puck"},
+    }
+  }
+]
+Here is the script to analyze:
+`;
 
   private models = {
     default: 'gemini-2.5-flash',
     light: 'gemini-2.5-flash',
-    image: 'imagen-4.0-generate-001',
+    image: 'gemini-2.5-flash-image-preview',
     audio: 'gemini-2.5-flash-preview-tts',
   };
   private ai: GoogleGenAI;
@@ -118,10 +126,9 @@ Here is the script to analyze:`;
 
   private formatMessagesForAPI(
     messages: Message[],
-    systemPrompt: string
-  ): { role: 'user' | 'model'; parts: { text: string }[] }[] {
-    const resultArray: { role: 'user' | 'model'; parts: { text: string }[] }[] =
-      [];
+    systemPrompt: string = this.defaultPrompt
+  ): Content[] {
+    const resultArray: Content[] = [];
 
     // 시스템 프롬프트를 첫 번째 사용자 메시지로 추가
     resultArray.push({
@@ -140,30 +147,34 @@ Here is the script to analyze:`;
     });
 
     // 기존 메시지들을 변환
-    messages.forEach((msg, idx) => {
-      const role = msg.role === 'assistant' ? 'model' : 'user';
-      let content = msg.content;
-
-      // 파일이 첨부된 경우 (마지막에서 두 번째 사용자 메시지)
-      if (idx === messages.length - 2 && msg.role === 'user' && msg.file) {
-        content += `\n\n첨부파일이름: ${msg.file.name}\n${msg.file.content}`;
+    messages.forEach((msg) => {
+      // 파일이 첨부된 경우 올바른 inlineData 구조로 변환
+      if (msg.file?.content) {
+        const message = {
+          role: msg.role,
+          parts: [
+            { text: msg.content },
+            {
+              inlineData: {
+                mimeType: msg.file.mime,
+                data: this.cleanBase64Data(msg.file.content),
+              },
+            },
+          ],
+        };
+        resultArray.push(message);
+      } else {
+        const message = { role: msg.role, parts: [{ text: msg.content }] };
+        resultArray.push(message);
       }
-
-      resultArray.push({
-        role,
-        parts: [{ text: content }],
-      });
     });
 
     // 마지막 메시지 제거 (아직 응답하지 않은 메시지)
-    return resultArray.slice(0, resultArray.length - 1);
+    return resultArray;
   }
 
   async *processMessageStream(messages: Message[]) {
-    const conversation = this.formatMessagesForAPI(
-      messages,
-      this.defaultPrompt
-    );
+    const conversation = this.formatMessagesForAPI(messages);
 
     try {
       const chat = this.ai.chats.create({
@@ -194,36 +205,87 @@ Here is the script to analyze:`;
     }
   }
 
-  async generateImage(messages: Message[]): Promise<string> {
+  async generateImage(
+    messages: Message[]
+  ): Promise<{ text: string; imageBase64: string; format: string }> {
     try {
-      const prompt: string = await this.generateMultimediaScript(
-        messages,
-        this.imageScriptPrompt
+      // 마지막 사용자 메시지를 이미지 생성 프롬프트로 사용
+      const lastMessage = messages[messages.length - 2];
+      const text = lastMessage.content;
+      const inlineData = lastMessage?.file;
+
+      // 공식 문서 예시에 따라 contents 구조 설정
+      let contents:
+        | string
+        | Array<
+            | { text: string }
+            | { inlineData: { mimeType: string; data: string } }
+          >;
+
+      if (inlineData) {
+        // 기존 이미지 + 텍스트로 새 이미지 생성하는 경우
+        contents = [
+          { text },
+          {
+            inlineData: {
+              mimeType: inlineData.mime,
+              data: this.cleanBase64Data(inlineData.content),
+            },
+          },
+        ];
+      } else {
+        // 텍스트만으로 이미지 생성하는 경우
+        contents = text;
+      }
+
+      this.printDev(
+        `이미지 생성 요청 - contents: ${JSON.stringify(contents, null, 2)}`
       );
 
-      const response = await this.ai.models.generateImages({
+      const response = await this.ai.models.generateContent({
         model: this.models.image,
-        prompt: prompt,
-        config: {
-          numberOfImages: 1,
-        },
+        contents,
       });
 
-      if (
-        !response ||
-        !response.generatedImages ||
-        response.generatedImages.length === 0
-      ) {
-        throw new Error('이미지 생성 실패: 응답 데이터가 없습니다.');
+      // 응답 구조 디버깅을 위한 로그
+      this.printDev(`이미지 생성 응답: ${JSON.stringify(response, null, 2)}`);
+
+      if (!response.candidates || response.candidates.length === 0) {
+        throw new Error('응답에 후보가 없습니다.');
       }
 
-      // Base64 이미지를 data URL로 변환
-      const imageBytes = response.generatedImages[0]?.image?.imageBytes;
-      if (!imageBytes) {
-        throw new Error('이미지 데이터가 없습니다.');
+      const candidate = response.candidates[0];
+      if (!candidate.content || !candidate.content.parts) {
+        throw new Error('응답 구조가 올바르지 않습니다.');
       }
-      const dataUrl = `data:image/png;base64,${imageBytes}`;
-      return dataUrl;
+
+      // parts 배열을 순회하면서 이미지 데이터 찾기
+      let imageData: string | undefined;
+      let responseText = '';
+
+      this.printDev(`응답 parts 개수: ${candidate.content.parts.length}`);
+
+      for (const part of candidate.content.parts) {
+        if (part.text) {
+          responseText += part.text;
+          this.printDev(`텍스트 응답: ${part.text}`);
+        } else if (part.inlineData) {
+          imageData = part.inlineData.data;
+          this.printDev(`이미지 데이터 발견: ${imageData ? '있음' : '없음'}`);
+          this.printDev(`이미지 데이터 길이: ${imageData?.length || 0}`);
+          break;
+        }
+      }
+
+      if (!imageData) {
+        throw new Error('이미지 데이터가 없습니다. 텍스트 응답만 받았습니다.');
+      }
+
+      return {
+        text: responseText || '[이미지 생성 완료]',
+        imageBase64: imageData,
+        format: 'png',
+      };
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`이미지 생성 요청 실패: ${error.message}`);
@@ -245,7 +307,7 @@ Here is the script to analyze:`;
         {
           inlineData: {
             mimeType: mimeType,
-            data: imageBase64,
+            data: this.cleanBase64Data(imageBase64),
           },
         },
       ];
@@ -279,37 +341,6 @@ Here is the script to analyze:`;
     }
   }
 
-  async generateMultimediaScript(
-    messages: Message[],
-    prompt: string
-  ): Promise<string> {
-    const conversation = this.formatMessagesForAPI(messages, prompt);
-
-    try {
-      const response = await this.ai.models.generateContent({
-        model: this.models.default,
-        contents: conversation,
-        config: {
-          thinkingConfig: {
-            thinkingBudget: 0,
-          },
-        },
-      });
-
-      if (!response.text) {
-        throw new Error('프롬프트 생성 실패: 응답 데이터가 없습니다.');
-      }
-
-      return response.text;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`프롬프트 생성 요청 실패: ${error.message}`);
-      } else {
-        throw new Error('프롬프트 생성 요청 실패: 알 수 없는 오류');
-      }
-    }
-  }
-
   private async getScript(prompt: string): Promise<string> {
     try {
       const response = await this.ai.models.generateContent({
@@ -332,16 +363,7 @@ Here is the script to analyze:`;
     }
   }
 
-  private async getVoiceConfigs(script: string): Promise<
-    {
-      speaker: string;
-      voiceConfig: {
-        prebuiltVoiceConfig: {
-          voiceName: string;
-        };
-      };
-    }[]
-  > {
+  private async getVoiceConfigs(script: string): Promise<SpeakerVoiceConfig[]> {
     try {
       const response = await this.ai.models.generateContent({
         model: this.models.default,
@@ -420,6 +442,17 @@ Here is the script to analyze:`;
         throw new Error('오디오 생성 요청 실패: 알 수 없는 오류');
       }
     }
+  }
+
+  private cleanBase64Data(base64Data: string): string {
+    // Base64 데이터에서 data URL 접두사 제거
+    if (base64Data.startsWith('data:')) {
+      const base64Index = base64Data.indexOf('base64,');
+      if (base64Index !== -1) {
+        return base64Data.substring(base64Index + 7);
+      }
+    }
+    return base64Data;
   }
 
   private getVoiceType(): string {

@@ -61,7 +61,13 @@ export const ChatInput: React.FC<Props> = ({
     let fileData: FileData | undefined;
     if (attachedFile) {
       const content = await readFileContent(attachedFile);
-      fileData = { file: attachedFile, content };
+      fileData = {
+        file: attachedFile,
+        name: attachedFile.name,
+        content,
+        mime: attachedFile.type,
+        path: attachedFile.name, // 임시로 파일명을 경로로 사용
+      };
     }
 
     const currentInput = input;
@@ -381,7 +387,9 @@ ${text}`);
       return;
     }
 
-    setActiveButton(buttonType);
+    if (buttonType === 'image' || buttonType === 'audio') {
+      setActiveButton(buttonType);
+    }
 
     // 파일 입력 트리거 (파일 버튼만)
     if (buttonType === 'file' && fileInputRef.current) {
@@ -389,8 +397,16 @@ ${text}`);
     }
   };
 
+  // form 빈 부분 클릭 시 textarea 포커스
+  const handleFormClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // 버튼이나 다른 인터랙티브 요소가 아닌 경우에만 textarea 포커스
+    if (e.target === e.currentTarget && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className='max-w-7xl mx-auto'>
+    <form onSubmit={handleSubmit} className='max-w-9xl mx-auto'>
       {attachedFile && (
         <div className='mb-2 p-2 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-between gap-2'>
           <span className='text-sm text-gray-600 dark:text-gray-300 flex items-center'>
@@ -413,20 +429,43 @@ ${text}`);
         </div>
       )}
 
-      <div className='border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800'>
-        <textarea
-          value={input}
-          onChange={handleTextareaChange}
-          onKeyDown={handleKeyDown}
-          placeholder='온실이에게 물어보기'
-          className='w-full p-3 bg-transparent text-gray-900 dark:text-white resize-none min-h-[40px] max-h-[160px] overflow-y-auto focus:outline-none'
-          style={{
-            height: '40px',
-            overflowY: input.trim().split('\n').length > 1 ? 'auto' : 'hidden',
-          }}
-          ref={textareaRef}
-          rows={1}
-        />
+      <div
+        className='border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 cursor-text'
+        onClick={handleFormClick}
+      >
+        {/* 텍스트 입력과 전송 버튼 영역 */}
+        <div className='flex items-end gap-2 p-3'>
+          <textarea
+            value={input}
+            onChange={handleTextareaChange}
+            onKeyDown={handleKeyDown}
+            placeholder='온실이에게 물어보기'
+            className='flex-1 bg-transparent text-gray-900 dark:text-white resize-none min-h-[40px] max-h-[160px] overflow-y-auto focus:outline-none'
+            style={{
+              height: '40px',
+              overflowY:
+                input.trim().split('\n').length > 1 ? 'auto' : 'hidden',
+            }}
+            ref={textareaRef}
+            rows={1}
+          />
+
+          {/* 전송 버튼 */}
+          <button
+            type='submit'
+            className={`p-2 rounded-lg transition-colors ${
+              isGenerating
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
+            }`}
+          >
+            {isGenerating ? (
+              <StopCircle className='w-5 h-5' />
+            ) : (
+              <Send className='w-5 h-5' />
+            )}
+          </button>
+        </div>
 
         {/* 하단 버튼 영역 */}
         <div className='flex items-center justify-between px-3 py-2'>
@@ -436,7 +475,7 @@ ${text}`);
               type='button'
               onClick={() => handleButtonClick('file')}
               className={`p-1.5 rounded-md transition-colors ${
-                activeButton === 'file'
+                attachedFile
                   ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
@@ -470,22 +509,6 @@ ${text}`);
               <Mic className='w-4 h-4' />
             </button>
           </div>
-
-          {/* 전송 버튼 */}
-          <button
-            type='submit'
-            className={`p-1.5 rounded-md transition-colors ${
-              isGenerating
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
-            }`}
-          >
-            {isGenerating ? (
-              <StopCircle className='w-4 h-4' />
-            ) : (
-              <Send className='w-4 h-4' />
-            )}
-          </button>
         </div>
       </div>
 

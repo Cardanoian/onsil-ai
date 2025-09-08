@@ -1,20 +1,17 @@
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  file?: {
-    name: string;
-    content: string;
-    path?: string;
-    mime?: string;
-  };
-}
-
 export interface FileData {
   file: File;
+  name: string;
   content: string;
-  mime?: string;
+  mime: string;
+  path: string;
+}
+
+export interface Message {
+  id: string;
+  role: 'user' | 'model';
+  content: string;
+  timestamp: string;
+  file?: FileData;
 }
 
 export type MessageInput = Omit<Message, 'id'>;
