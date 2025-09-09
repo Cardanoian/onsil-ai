@@ -1,6 +1,7 @@
 import { ChatModel } from '../models/ChatModel';
 import { GeminiService } from '../services/GeminiService';
 import { FileData, Message } from '../models/types';
+import { devLog, devError } from '../utils/logger';
 
 export class ChatController {
   private static instance: ChatController;
@@ -68,33 +69,17 @@ export class ChatController {
 
       const updatedMessages = this.model.getMessages();
 
-      // 버튼 타입에 따른 처리 결정
-      let type: string;
-      if (buttonType === 'image') {
-        type = 'image';
-      } else if (buttonType === 'audio') {
-        type = 'audio';
-      } else {
-        type = 'text';
-      }
+      this.printPrompt(message, buttonType?.toString() ?? '');
 
-      this.printPrompt(message, type);
-
-      switch (type) {
+      switch (buttonType) {
         case 'image':
           await this.handleImage(assistantMessageId, updatedMessages);
           return;
         case 'audio':
           await this.handleAudio(assistantMessageId, updatedMessages);
           return;
-        case 'text':
         default:
-          await this.handleText(
-            message,
-            assistantMessageId,
-            updatedMessages,
-            fileData
-          );
+          await this.handleText(assistantMessageId, updatedMessages);
           return;
       }
     } catch (error) {
@@ -110,14 +95,7 @@ export class ChatController {
   }
 
   private printPrompt = (message: string, type: string) => {
-    // 개발환경(localhost)에서만 프롬프트와 요청 타입을 콘솔에 출력
-    if (
-      typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1')
-    ) {
-      console.log('[ChatController] 프롬프트:', message, '| 요청 타입:', type);
-    }
+    devLog('[ChatController] 프롬프트:', message, '| 요청 타입:', type);
   };
 
   private async handleImage(
@@ -128,25 +106,12 @@ export class ChatController {
       assistantMessageId,
       '🖼️ 이미지를 생성 중입니다... 잠시만 기다려주세요!'
     );
-    const { text, imageBase64, format } =
-      await this.geminiService.generateImage(updatedMessages);
+    const { text, imageUrl } = await this.geminiService.generateImage(
+      updatedMessages
+    );
 
-    const imageFileName = `image_${Date.now()}.${format}`;
-    const imageMime = `image/${format}`;
-    const imageDataUrl = `data:${imageMime};base64,${imageBase64}`;
-
-    // 임시 File 객체 생성 (이미지 파일용)
-    const imageFile = new File([imageBase64], imageFileName, {
-      type: imageMime,
-    });
-
-    this.model.updateMessage(assistantMessageId, text, {
-      file: imageFile,
-      name: imageFileName,
-      content: imageDataUrl,
-      mime: imageMime,
-      path: imageFileName, // 임시 경로로 파일명 사용
-    });
+    // Blob URL로 메시지 업데이트 (오디오와 동일한 방식)
+    this.model.updateMessage(assistantMessageId, text, undefined, imageUrl);
   }
 
   private async handleAudio(
@@ -161,66 +126,35 @@ export class ChatController {
       );
 
       // 2. 오디오 생성
-      const { text, audioBase64, format } =
-        await this.geminiService.generateAudioResponse(updatedMessages);
+      const { text, audioUrl } = await this.geminiService.generateAudioResponse(
+        updatedMessages
+      );
 
-      // 3. 메시지 업데이트: 스크립트 텍스트 + 오디오 파일 정보
-      const audioFileName = `audio_${Date.now()}.${format}`;
-      const audioMime = format === 'wav' ? 'audio/wav' : 'audio/mpeg';
-      const audioDataUrl = `data:${audioMime};base64,${audioBase64}`;
-
-      // 스크립트와 오디오를 함께 표시
+      // 3. 메시지 업데이트: 스크립트 텍스트와 오디오 URL
       const displayText = `**생성된 스크립트:**\n\n${text}\n\n**🎵 오디오 파일이 생성되었습니다!**`;
 
-      // 임시 File 객체 생성 (오디오 파일용)
-      const audioFile = new File([audioBase64], audioFileName, {
-        type: audioMime,
-      });
-
-      this.model.updateMessage(assistantMessageId, displayText, {
-        file: audioFile,
-        name: audioFileName,
-        content: audioDataUrl,
-        mime: audioMime,
-        path: audioFileName, // 임시 경로로 파일명 사용
-      });
+      // 오디오 URL로 메시지 업데이트
+      this.model.updateMessage(
+        assistantMessageId,
+        displayText,
+        undefined,
+        audioUrl
+      );
     } catch (error) {
       this.model.updateMessage(
         assistantMessageId,
         '오디오 생성 중 오류가 발생했습니다. 다시 시도해 주세요.'
       );
       if (error instanceof Error) {
-        console.error('오디오 생성 오류:', error);
+        devError('오디오 생성 오류:', error);
       }
     }
   }
 
   private async handleText(
-    message: string,
     assistantMessageId: string,
-    updatedMessages: Message[],
-    fileData?: FileData
+    updatedMessages: Message[]
   ) {
-    // 이미지 파일이 첨부된 경우 vision 처리
-    if (
-      fileData &&
-      fileData.file &&
-      /(\.jpe?g|\.png)$/i.test(fileData.file.name)
-    ) {
-      let base64 = fileData.content;
-      let mimeType = 'image/png';
-      const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/.exec(
-        fileData.content
-      );
-      if (match) {
-        mimeType = match[1];
-        base64 = match[2];
-      }
-      const stream = this.geminiService.visionChat(message, base64, mimeType);
-      await this.updateAssistantMessageStream(stream, assistantMessageId);
-      return;
-    }
-
     // 일반 텍스트 처리
     const stream = this.geminiService.processMessageStream(updatedMessages);
     await this.updateAssistantMessageStream(stream, assistantMessageId);

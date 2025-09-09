@@ -4,6 +4,7 @@ import { ChatInput } from './components/ChatInput';
 import { ChatController } from '../controllers/ChatController';
 import { Message } from '../models/types';
 import { Header } from './components/Header';
+import { devLog } from '../utils/logger';
 
 export const ChatView: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -38,9 +39,9 @@ export const ChatView: React.FC = () => {
       await controller.sendMessage(...args);
     } catch (error) {
       if (error instanceof Error) {
-        console.log(error.message);
+        devLog(error.message);
       } else {
-        console.log('알 수 없는 에러가 발생');
+        devLog('알 수 없는 에러가 발생');
       }
       setIsGenerating(false);
     } finally {

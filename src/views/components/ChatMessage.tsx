@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import { format, parseISO } from 'date-fns';
 import { Message } from '../../models/types';
+import { MediaLoader } from '../../utils/mediaLoader';
+import { devError } from '../../utils/logger';
 
 interface Props {
   message: Message;
@@ -83,6 +85,8 @@ export const ChatMessage: React.FC<Props> = ({ message }) => {
             )}
           </div>
         )}
+        {/* 캐시된 미디어 또는 오디오 URL 표시 */}
+        {message.mediaId && <MediaDisplay mediaId={message.mediaId} />}
       </div>
     </div>
   );
@@ -115,8 +119,8 @@ const MarkdownContents: React.FC<Props> = ({ message }) => (
             <code
               className={
                 match
-                  ? `language-${match[1]} bg-gray-100 dark:bg-gray-700 block p-2 rounded`
-                  : 'bg-gray-100 dark:bg-gray-700 px-1 rounded'
+                  ? `language-${match[1]} bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 block p-2 rounded`
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-1 rounded'
               }
               {...props}
             >
@@ -220,5 +224,244 @@ const MarkdownContents: React.FC<Props> = ({ message }) => (
     </ReactMarkdown>
   </>
 );
+
+// 미디어를 표시하는 컴포넌트 (캐시된 미디어 ID 또는 Blob URL)
+interface MediaDisplayProps {
+  mediaId: string;
+}
+
+const MediaDisplay: React.FC<MediaDisplayProps> = ({ mediaId }) => {
+  // Blob URL인지 확인 (blob:로 시작하는지 체크)
+  const isBlobUrl = mediaId.startsWith('blob:');
+
+  if (isBlobUrl) {
+    // Blob URL인 경우 미디어 타입을 URL에서 추정
+    // 이미지인지 오디오인지 구분하기 위해 fetch로 MIME 타입 확인
+    return <BlobMediaPlayer blobUrl={mediaId} />;
+  } else {
+    // 캐시된 미디어 ID인 경우 기존 로직 사용
+    return <CachedMedia mediaId={mediaId} />;
+  }
+};
+
+// Blob URL 미디어 플레이어 컴포넌트 (이미지와 오디오 모두 처리)
+interface BlobMediaPlayerProps {
+  blobUrl: string;
+}
+
+const BlobMediaPlayer: React.FC<BlobMediaPlayerProps> = ({ blobUrl }) => {
+  const [mediaType, setMediaType] = useState<'image' | 'audio' | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const detectMediaType = () => {
+      try {
+        // Blob URL에서 직접 MIME 타입을 확인할 수 없으므로
+        // 컨텍스트를 통해 추정 (GeminiService에서 생성된 타입 기반)
+        // 이미지는 image/png, 오디오는 audio/mp3로 생성됨
+
+        // 임시로 이미지 로드를 시도해서 타입 감지
+        const img = new Image();
+        img.onload = () => {
+          setMediaType('image');
+          setLoading(false);
+        };
+        img.onerror = () => {
+          // 이미지 로드 실패 시 오디오로 가정
+          setMediaType('audio');
+          setLoading(false);
+        };
+        img.src = blobUrl;
+      } catch (error) {
+        devError('미디어 타입 감지 실패:', error);
+        setMediaType('image'); // 오류 시 이미지로 가정
+        setLoading(false);
+      }
+    };
+
+    detectMediaType();
+
+    // 컴포넌트 언마운트 시 Blob URL 정리
+    return () => {
+      if (blobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(blobUrl);
+      }
+    };
+  }, [blobUrl]);
+
+  const handleDownload = (filename: string) => {
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (loading) {
+    return (
+      <div className='mt-2 flex items-center gap-2'>
+        <div className='w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin'></div>
+        <span className='text-sm text-gray-500 dark:text-gray-400'>
+          미디어 로딩 중...
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className='mt-2'>
+      {mediaType === 'image' && (
+        <div>
+          <img
+            src={blobUrl}
+            alt='생성된 이미지'
+            style={{
+              maxWidth: '300px',
+              height: 'auto',
+              display: 'block',
+              borderRadius: '0.5rem',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            }}
+          />
+          <button
+            onClick={() => handleDownload('generated-image.png')}
+            className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs mt-2'
+          >
+            이미지 다운로드
+          </button>
+        </div>
+      )}
+
+      {mediaType === 'audio' && (
+        <div className='flex flex-col items-start gap-2'>
+          <audio controls src={blobUrl} style={{ width: '250px' }}>
+            브라우저가 오디오 태그를 지원하지 않습니다.
+          </audio>
+          <button
+            onClick={() => handleDownload('generated-audio.mp3')}
+            className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs'
+          >
+            오디오 다운로드 (MP3)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 캐시된 미디어를 표시하는 컴포넌트
+interface CachedMediaProps {
+  mediaId: string;
+}
+
+const CachedMedia: React.FC<CachedMediaProps> = ({ mediaId }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<'image' | 'audio' | null>(null);
+  const [mediaFormat, setMediaFormat] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadMedia = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // 미디어 타입과 형식 확인
+        const type = MediaLoader.getMediaType(mediaId);
+        const format = MediaLoader.getMediaFormat(mediaId);
+
+        if (!type || !format) {
+          throw new Error('미디어 정보를 찾을 수 없습니다.');
+        }
+
+        setMediaType(type);
+        setMediaFormat(format);
+
+        // 미디어 로드
+        const result = await MediaLoader.load(mediaId);
+
+        if (!result.success) {
+          throw new Error(result.error || '미디어 로딩에 실패했습니다.');
+        }
+
+        setDataUrl(result.dataUrl!);
+      } catch (err) {
+        devError('캐시된 미디어 로딩 실패:', err);
+        setError(err instanceof Error ? err.message : '알 수 없는 오류');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadMedia();
+  }, [mediaId]);
+
+  if (loading) {
+    return (
+      <div className='mt-2 flex items-center gap-2'>
+        <div className='w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin'></div>
+        <span className='text-sm text-gray-500 dark:text-gray-400'>
+          미디어 로딩 중...
+        </span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className='mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-600 dark:text-red-400'>
+        미디어 로딩 실패: {error}
+      </div>
+    );
+  }
+
+  if (!dataUrl || !mediaType || !mediaFormat) {
+    return null;
+  }
+
+  return (
+    <div className='mt-2'>
+      {mediaType === 'image' && (
+        <div>
+          <img
+            src={dataUrl}
+            alt='생성된 이미지'
+            style={{
+              maxWidth: '300px',
+              height: 'auto',
+              display: 'block',
+              borderRadius: '0.5rem',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            }}
+          />
+          <a
+            href={dataUrl}
+            download={`generated-image.${mediaFormat}`}
+            className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs mt-2'
+          >
+            이미지 다운로드
+          </a>
+        </div>
+      )}
+
+      {mediaType === 'audio' && (
+        <div className='flex flex-col items-start gap-2'>
+          <audio controls src={dataUrl} style={{ width: '250px' }}>
+            브라우저가 오디오 태그를 지원하지 않습니다.
+          </audio>
+          <a
+            href={dataUrl}
+            download={`generated-audio.${mediaFormat}`}
+            className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs'
+          >
+            오디오 다운로드 ({mediaFormat.toUpperCase()})
+          </a>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default ChatMessage;

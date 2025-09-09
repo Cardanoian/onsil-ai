@@ -25,13 +25,19 @@ export class ChatModel {
     return id;
   }
 
-  updateMessage(messageId: string, content: string, file?: Message['file']) {
+  updateMessage(
+    messageId: string,
+    content: string,
+    file?: Message['file'],
+    mediaId?: string
+  ) {
     const messageIndex = this.messages.findIndex((msg) => msg.id === messageId);
     if (messageIndex !== -1) {
       this.messages[messageIndex] = {
         ...this.messages[messageIndex],
         content,
         ...(file !== undefined ? { file } : {}),
+        ...(mediaId !== undefined ? { mediaId } : {}),
       };
       this.notifyListeners();
     }

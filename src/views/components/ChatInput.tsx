@@ -10,6 +10,7 @@ import jschardet from 'jschardet';
 import { FileData } from '../../models/types';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
 import * as XLSX from 'xlsx';
+import { devLog, devError } from '../../utils/logger';
 
 interface Props {
   onSend: (
@@ -149,7 +150,7 @@ export const ChatInput: React.FC<Props> = ({
             resolve(`==== 첨부파일(PDF) 내용 (markdown) ====\n\n${text}`);
           } catch (error) {
             if (error instanceof Error) {
-              console.log(error);
+              devLog(error);
             } else {
               reject(new Error('PDF 파일 처리 중 오류가 발생했습니다.'));
             }
@@ -309,7 +310,7 @@ ${text}`);
               const result = await readWithEncoding(file, encoding);
               return result;
             } catch (error) {
-              console.error(`파일 읽기 실패: ${error}`);
+              devError(`파일 읽기 실패: ${error}`);
               continue;
             }
           }

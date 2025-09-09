@@ -12,6 +12,7 @@ export interface Message {
   content: string;
   timestamp: string;
   file?: FileData;
+  mediaId?: string; // 캐시된 미디어 ID
 }
 
 export type MessageInput = Omit<Message, 'id'>;
