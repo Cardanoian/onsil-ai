@@ -11,8 +11,8 @@ export interface Message {
   role: 'user' | 'model';
   content: string;
   timestamp: string;
-  file?: FileData;
-  mediaId?: string; // 캐시된 미디어 ID
+  file?: FileData; // 단일 파일 지원
+  mediaUrl?: string; // 미디어 URL (Blob URL)
 }
 
 export type MessageInput = Omit<Message, 'id'>;

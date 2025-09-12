@@ -23,6 +23,7 @@
     "framesize",
     "fullpage",
     "futuro",
+    "gbept",
     "Hcurve",
     "highpassfreq",
     "highpasswidth",
@@ -46,6 +47,7 @@
     "momento",
     "mpglib",
     "msfix",
+    "msword",
     "mtrh",
     "noclip",
     "nogap",
@@ -59,6 +61,7 @@
     "perdamos",
     "pinfo",
     "POSTDELAY",
+    "presentationml",
     "PSFB",
     "psymodel",
     "Pulcherrima",
@@ -76,6 +79,7 @@
     "subblock",
     "substep",
     "Sulafat",
-    "transformación"
+    "transformación",
+    "wordprocessingml"
   ]
 }

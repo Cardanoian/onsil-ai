@@ -5,7 +5,6 @@ import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import { format, parseISO } from 'date-fns';
 import { Message } from '../../models/types';
-import { MediaLoader } from '../../utils/mediaLoader';
 import { devError } from '../../utils/logger';
 
 interface Props {
@@ -46,47 +45,49 @@ export const ChatMessage: React.FC<Props> = ({ message }) => {
         )}
         {message.file && (
           <div className='text-sm mt-2 opacity-75 dark:text-gray-300'>
-            {message.file.name}
-            {/* 이미지 미리보기 */}
-            {/\.(jpe?g|png)$/i.test(message.file.name) && (
-              <img
-                src={message.file.content}
-                alt={message.file.name}
-                style={{
-                  maxWidth: '300px',
-                  height: 'auto',
-                  display: 'block',
-                  marginTop: '0.5rem',
-                  borderRadius: '0.5rem',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                }}
-              />
-            )}
-            {/* 오디오 미리듣기 및 다운로드 */}
-            {(message.file.mime === 'audio/wav' ||
-              message.file.mime === 'audio/mpeg' ||
-              /\.mp3$/i.test(message.file.name)) && (
-              <div className='mt-2 flex flex-col items-start gap-2'>
-                <audio
-                  controls
+            <div className='mb-2 last:mb-0'>
+              <div className='font-medium'>{message.file.name}</div>
+              {/* 이미지 미리보기 */}
+              {/\.(jpe?g|png)$/i.test(message.file.name) && (
+                <img
                   src={message.file.content}
-                  style={{ width: '250px', marginTop: '0.5rem' }}
-                >
-                  브라우저가 오디오 태그를 지원하지 않습니다.
-                </audio>
-                <a
-                  href={message.file.content}
-                  download={message.file.name}
-                  className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs mt-1'
-                >
-                  오디오 다운로드
-                </a>
-              </div>
-            )}
+                  alt={message.file.name}
+                  style={{
+                    maxWidth: '300px',
+                    height: 'auto',
+                    display: 'block',
+                    marginTop: '0.5rem',
+                    borderRadius: '0.5rem',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  }}
+                />
+              )}
+              {/* 오디오 미리듣기 및 다운로드 */}
+              {(message.file.mime === 'audio/wav' ||
+                message.file.mime === 'audio/mpeg' ||
+                /\.mp3$/i.test(message.file.name)) && (
+                <div className='mt-2 flex flex-col items-start gap-2'>
+                  <audio
+                    controls
+                    src={message.file.content}
+                    style={{ width: '250px', marginTop: '0.5rem' }}
+                  >
+                    브라우저가 오디오 태그를 지원하지 않습니다.
+                  </audio>
+                  <a
+                    href={message.file.content}
+                    download={message.file.name}
+                    className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs mt-1'
+                  >
+                    오디오 다운로드
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         )}
-        {/* 캐시된 미디어 또는 오디오 URL 표시 */}
-        {message.mediaId && <MediaDisplay mediaId={message.mediaId} />}
+        {/* 미디어 URL 표시 */}
+        {message.mediaUrl && <BlobMediaPlayer blobUrl={message.mediaUrl} />}
       </div>
     </div>
   );
@@ -225,25 +226,6 @@ const MarkdownContents: React.FC<Props> = ({ message }) => (
   </>
 );
 
-// 미디어를 표시하는 컴포넌트 (캐시된 미디어 ID 또는 Blob URL)
-interface MediaDisplayProps {
-  mediaId: string;
-}
-
-const MediaDisplay: React.FC<MediaDisplayProps> = ({ mediaId }) => {
-  // Blob URL인지 확인 (blob:로 시작하는지 체크)
-  const isBlobUrl = mediaId.startsWith('blob:');
-
-  if (isBlobUrl) {
-    // Blob URL인 경우 미디어 타입을 URL에서 추정
-    // 이미지인지 오디오인지 구분하기 위해 fetch로 MIME 타입 확인
-    return <BlobMediaPlayer blobUrl={mediaId} />;
-  } else {
-    // 캐시된 미디어 ID인 경우 기존 로직 사용
-    return <CachedMedia mediaId={mediaId} />;
-  }
-};
-
 // Blob URL 미디어 플레이어 컴포넌트 (이미지와 오디오 모두 처리)
 interface BlobMediaPlayerProps {
   blobUrl: string;
@@ -344,120 +326,6 @@ const BlobMediaPlayer: React.FC<BlobMediaPlayerProps> = ({ blobUrl }) => {
           >
             오디오 다운로드 (MP3)
           </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// 캐시된 미디어를 표시하는 컴포넌트
-interface CachedMediaProps {
-  mediaId: string;
-}
-
-const CachedMedia: React.FC<CachedMediaProps> = ({ mediaId }) => {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [mediaType, setMediaType] = useState<'image' | 'audio' | null>(null);
-  const [mediaFormat, setMediaFormat] = useState<string | null>(null);
-
-  useEffect(() => {
-    const loadMedia = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // 미디어 타입과 형식 확인
-        const type = MediaLoader.getMediaType(mediaId);
-        const format = MediaLoader.getMediaFormat(mediaId);
-
-        if (!type || !format) {
-          throw new Error('미디어 정보를 찾을 수 없습니다.');
-        }
-
-        setMediaType(type);
-        setMediaFormat(format);
-
-        // 미디어 로드
-        const result = await MediaLoader.load(mediaId);
-
-        if (!result.success) {
-          throw new Error(result.error || '미디어 로딩에 실패했습니다.');
-        }
-
-        setDataUrl(result.dataUrl!);
-      } catch (err) {
-        devError('캐시된 미디어 로딩 실패:', err);
-        setError(err instanceof Error ? err.message : '알 수 없는 오류');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMedia();
-  }, [mediaId]);
-
-  if (loading) {
-    return (
-      <div className='mt-2 flex items-center gap-2'>
-        <div className='w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin'></div>
-        <span className='text-sm text-gray-500 dark:text-gray-400'>
-          미디어 로딩 중...
-        </span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className='mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-600 dark:text-red-400'>
-        미디어 로딩 실패: {error}
-      </div>
-    );
-  }
-
-  if (!dataUrl || !mediaType || !mediaFormat) {
-    return null;
-  }
-
-  return (
-    <div className='mt-2'>
-      {mediaType === 'image' && (
-        <div>
-          <img
-            src={dataUrl}
-            alt='생성된 이미지'
-            style={{
-              maxWidth: '300px',
-              height: 'auto',
-              display: 'block',
-              borderRadius: '0.5rem',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-            }}
-          />
-          <a
-            href={dataUrl}
-            download={`generated-image.${mediaFormat}`}
-            className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs mt-2'
-          >
-            이미지 다운로드
-          </a>
-        </div>
-      )}
-
-      {mediaType === 'audio' && (
-        <div className='flex flex-col items-start gap-2'>
-          <audio controls src={dataUrl} style={{ width: '250px' }}>
-            브라우저가 오디오 태그를 지원하지 않습니다.
-          </audio>
-          <a
-            href={dataUrl}
-            download={`generated-audio.${mediaFormat}`}
-            className='inline-block px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs'
-          >
-            오디오 다운로드 ({mediaFormat.toUpperCase()})
-          </a>
         </div>
       )}
     </div>

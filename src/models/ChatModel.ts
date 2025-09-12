@@ -29,7 +29,7 @@ export class ChatModel {
     messageId: string,
     content: string,
     file?: Message['file'],
-    mediaId?: string
+    mediaUrl?: string
   ) {
     const messageIndex = this.messages.findIndex((msg) => msg.id === messageId);
     if (messageIndex !== -1) {
@@ -37,7 +37,7 @@ export class ChatModel {
         ...this.messages[messageIndex],
         content,
         ...(file !== undefined ? { file } : {}),
-        ...(mediaId !== undefined ? { mediaId } : {}),
+        ...(mediaUrl !== undefined ? { mediaUrl } : {}),
       };
       this.notifyListeners();
     }

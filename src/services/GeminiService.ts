@@ -1,11 +1,11 @@
-import { Content, GoogleGenAI, SpeakerVoiceConfig } from '@google/genai';
+import { Content, GoogleGenAI, SpeakerVoiceConfig, Type } from '@google/genai';
 import { Message } from '../models/types';
 import { AudioConverter } from '../utils/audioConverter';
 import { devLog } from '../utils/logger';
 
 export class GeminiService {
   private defaultPrompt: string = `[역할]
-  당신은 경상북도교육청 AI 개발팀(G-AI Lab)에서이 만든, 친근하고 긍정적인 학습 도우미입니다.
+  당신은 경상북도교육청 AI 개발팀(G-AI Lab)이 만든, 친근하고 긍정적인 학습 도우미 온실이AI입니다.
   
   [상황]
   학생이나 교사가 학습 내용에 대해 질문하거나 설명을 요청하는 상황입니다.
@@ -76,6 +76,7 @@ You must follow these rules:
    - Consider the speaker's personality and tone, but GENDER MATCHING is the PRIMARY requirement
 3. Ensure uniqueness: Assign a unique voice to each speaker. Do not reuse a voice for multiple speakers.
 4. Format the output: Please provide the output as a single, valid JSON array that can be directly used by the JSON.parse() function, instead of using Markdown format. Each object in the array should have two keys: 'speaker' (the name of the speaker) and 'voiceConfig'. The 'voiceConfig' object must contain a 'prebuiltVoiceConfig' with a 'voiceName' key, and the value must be one of the voice names from the provided list.
+5. Please ensure the characters do not call each other by name.
 
 Here are the available voices:
 {
@@ -178,19 +179,25 @@ Here is the script to analyze:
 
     // 기존 메시지들을 변환
     messages.forEach((msg) => {
-      // 파일이 첨부된 경우 올바른 inlineData 구조로 변환
-      if (msg.file?.content) {
+      // 파일이 첨부된 경우 파일을 inlineData로 변환
+      if (msg.file) {
+        const parts: Array<
+          { text: string } | { inlineData: { mimeType: string; data: string } }
+        > = [{ text: msg.content }];
+
+        // 파일을 parts에 추가
+        if (msg.file.content) {
+          parts.push({
+            inlineData: {
+              mimeType: msg.file.mime,
+              data: this.cleanBase64Data(msg.file.content),
+            },
+          });
+        }
+
         const message = {
           role: msg.role,
-          parts: [
-            { text: msg.content },
-            {
-              inlineData: {
-                mimeType: msg.file.mime,
-                data: this.cleanBase64Data(msg.file.content),
-              },
-            },
-          ],
+          parts,
         };
         resultArray.push(message);
       } else {
@@ -238,21 +245,16 @@ Here is the script to analyze:
     }
   }
 
-  // 기존 generateImage 함수 (주석처리)
+  // 이미지 생성 함수 (with Nano Banana)
   // async generateImage(
   //   messages: Message[]
   // ): Promise<{ text: string; imageUrl: string }> {
   //   try {
   //     // 마지막 사용자 메시지를 이미지 생성 프롬프트로 사용
   //     const lastMessage = messages[messages.length - 2];
-  //     let text = lastMessage.content;
+  //     const text = `Create a picture based on this image and request: ${lastMessage.content}`;
   //     const inlineData = lastMessage?.file;
-
-  //     // 이미지 생성을 명확히 요청하는 프롬프트로 개선
-  //     if (!inlineData) {
-  //       // 텍스트만으로 이미지 생성하는 경우 - 명확한 이미지 생성 지시어 추가
-  //       text = `Generate an image of: ${text}`;
-  //     }
+  //     this.printDev(text);
 
   //     // 공식 문서 예시에 따라 contents 구조 설정
   //     let contents:
@@ -262,10 +264,10 @@ Here is the script to analyze:
   //           | { inlineData: { mimeType: string; data: string } }
   //         >;
 
-  //     if (inlineData) {
+  //     if (inlineData && inlineData.mime.includes('image')) {
   //       // 기존 이미지 + 텍스트로 새 이미지 생성하는 경우
   //       contents = [
-  //         { text: `Create a picture based on this image and request: ${text}` },
+  //         { text: text },
   //         {
   //           inlineData: {
   //             mimeType: inlineData.mime,
@@ -278,40 +280,21 @@ Here is the script to analyze:
   //       contents = text;
   //     }
 
-  //     this.printDev(`=== 이미지 생성 요청 ===`);
-  //     this.printDev(`모델: ${this.models.image}`);
-  //     this.printDev(
-  //       `프롬프트: ${
-  //         typeof contents === 'string'
-  //           ? contents
-  //           : JSON.stringify(contents, null, 2)
-  //       }`
-  //     );
-
   //     const response = await this.ai.models.generateContent({
   //       model: this.models.image,
   //       contents,
+  //       config: {
+  //         responseModalities: ['IMAGE'],
+  //       },
   //     });
 
-  //     // 응답 구조 상세 디버깅
-  //     this.printDev(`=== 이미지 생성 응답 분석 ===`);
-  //     this.printDev(`전체 응답: ${JSON.stringify(response, null, 2)}`);
-
   //     if (!response.candidates || response.candidates.length === 0) {
-  //       this.printDev(`❌ 오류: 응답에 후보가 없습니다.`);
-  //       this.printDev(`응답 객체 키들: ${Object.keys(response)}`);
   //       throw new Error('응답에 후보가 없습니다. API 키 권한을 확인해주세요.');
   //     }
 
   //     const candidate = response.candidates[0];
-  //     this.printDev(`후보 객체: ${JSON.stringify(candidate, null, 2)}`);
 
   //     if (!candidate.content || !candidate.content.parts) {
-  //       this.printDev(`❌ 오류: 응답 구조가 올바르지 않습니다.`);
-  //       this.printDev(`candidate 키들: ${Object.keys(candidate)}`);
-  //       if (candidate.content) {
-  //         this.printDev(`content 키들: ${Object.keys(candidate.content)}`);
-  //       }
   //       throw new Error('응답 구조가 올바르지 않습니다.');
   //     }
 
@@ -319,22 +302,13 @@ Here is the script to analyze:
   //     let imageData: string | undefined;
   //     let responseText = '';
 
-  //     this.printDev(`응답 parts 개수: ${candidate.content.parts.length}`);
-
   //     for (let i = 0; i < candidate.content.parts.length; i++) {
   //       const part = candidate.content.parts[i];
-  //       this.printDev(`Part ${i}: ${JSON.stringify(part, null, 2)}`);
 
   //       if (part.text) {
   //         responseText += part.text;
-  //         this.printDev(
-  //           `✅ 텍스트 응답 발견: ${part.text.substring(0, 100)}...`
-  //         );
   //       } else if (part.inlineData) {
   //         imageData = part.inlineData.data;
-  //         this.printDev(`✅ 이미지 데이터 발견!`);
-  //         this.printDev(`이미지 MIME 타입: ${part.inlineData.mimeType}`);
-  //         this.printDev(`이미지 데이터 길이: ${imageData?.length || 0}`);
   //         break;
   //       } else {
   //         this.printDev(`⚠️ 알 수 없는 part 타입: ${Object.keys(part)}`);
@@ -342,14 +316,6 @@ Here is the script to analyze:
   //     }
 
   //     if (!imageData) {
-  //       this.printDev(`❌ 이미지 데이터를 찾을 수 없습니다.`);
-  //       this.printDev(`텍스트 응답만 받음: ${responseText}`);
-  //       this.printDev(`이는 다음 중 하나의 문제일 수 있습니다:`);
-  //       this.printDev(`1. API 키에 이미지 생성 권한이 없음`);
-  //       this.printDev(`2. 지역 제한으로 이미지 생성 기능 사용 불가`);
-  //       this.printDev(`3. 프롬프트가 이미지 생성으로 인식되지 않음`);
-  //       this.printDev(`4. 모델 버전 문제`);
-
   //       throw new Error(
   //         `이미지 데이터가 없습니다. 텍스트 응답만 받았습니다.\n\n받은 응답: "${responseText}"\n\n가능한 원인:\n1. API 키에 이미지 생성 권한이 없을 수 있습니다.\n2. 지역 제한으로 이미지 생성 기능을 사용할 수 없을 수 있습니다.\n3. 프롬프트를 더 명확하게 작성해보세요.`
   //       );
@@ -366,14 +332,11 @@ Here is the script to analyze:
   //     const imageBlob = new Blob([bytes], { type: 'image/png' });
   //     const imageUrl = URL.createObjectURL(imageBlob);
 
-  //     this.printDev(`✅ 이미지 Blob URL 생성 완료: ${imageUrl}`);
-
   //     return {
   //       text: responseText || '[이미지 생성 완료]',
   //       imageUrl,
   //     };
   //   } catch (error) {
-  //     this.printDev(`❌ 이미지 생성 오류: ${error}`);
   //     if (error instanceof Error) {
   //       throw new Error(`이미지 생성 요청 실패: ${error.message}`);
   //     } else {
@@ -391,10 +354,6 @@ Here is the script to analyze:
       const lastMessage = messages[messages.length - 2];
       const prompt = lastMessage.content;
 
-      this.printDev(`=== Imagen 4.0 이미지 생성 요청 ===`);
-      this.printDev(`모델: imagen-4.0-generate-001`);
-      this.printDev(`프롬프트: ${prompt}`);
-
       const response = await this.ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
         prompt: prompt,
@@ -403,12 +362,7 @@ Here is the script to analyze:
         },
       });
 
-      this.printDev(`=== Imagen 4.0 응답 분석 ===`);
-      this.printDev(`전체 응답: ${JSON.stringify(response, null, 2)}`);
-
       if (!response.generatedImages || response.generatedImages.length === 0) {
-        this.printDev(`❌ 오류: 생성된 이미지가 없습니다.`);
-        this.printDev(`응답 객체 키들: ${Object.keys(response)}`);
         throw new Error(
           '생성된 이미지가 없습니다. API 키 권한을 확인해주세요.'
         );
@@ -417,8 +371,6 @@ Here is the script to analyze:
       const generatedImage = response.generatedImages[0];
 
       if (!generatedImage.image || !generatedImage.image.imageBytes) {
-        this.printDev(`❌ 오류: 이미지 바이트 데이터가 없습니다.`);
-        this.printDev(`generatedImage 키들: ${Object.keys(generatedImage)}`);
         if (generatedImage.image) {
           this.printDev(`image 키들: ${Object.keys(generatedImage.image)}`);
         }
@@ -426,8 +378,6 @@ Here is the script to analyze:
       }
 
       const imageBytes = generatedImage.image.imageBytes;
-      this.printDev(`✅ 이미지 바이트 데이터 발견!`);
-      this.printDev(`이미지 데이터 길이: ${imageBytes.length}`);
 
       // Base64를 Blob으로 변환하고 URL 생성
       const binaryString = atob(imageBytes);
@@ -440,14 +390,11 @@ Here is the script to analyze:
       const imageBlob = new Blob([bytes], { type: 'image/png' });
       const imageUrl = URL.createObjectURL(imageBlob);
 
-      this.printDev(`✅ 이미지 Blob URL 생성 완료: ${imageUrl}`);
-
       return {
         text: '[이미지 생성 완료]',
         imageUrl,
       };
     } catch (error) {
-      this.printDev(`❌ Imagen 4.0 이미지 생성 오류: ${error}`);
       if (error instanceof Error) {
         throw new Error(`이미지 생성 요청 실패: ${error.message}`);
       } else {
@@ -512,6 +459,25 @@ Here is the script to analyze:
         model: this.models.default,
         contents: `${this.voiceConfigPrompt}\n\n${script}`,
         config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                speaker: { type: Type.STRING },
+                voiceConfig: {
+                  type: Type.OBJECT,
+                  properties: {
+                    prebuiltVoiceConfig: {
+                      type: Type.OBJECT,
+                      properties: { voiceName: { type: Type.STRING } },
+                    },
+                  },
+                },
+              },
+            },
+          },
           thinkingConfig: {
             thinkingBudget: 0,
           },
@@ -565,6 +531,8 @@ Here is the script to analyze:
 
       const script = await this.getScript(userPrompt);
       const voiceConfigs = await this.getVoiceConfigs(script);
+      this.printDev(script);
+      this.printDev(voiceConfigs.toString());
 
       let response;
 
@@ -625,7 +593,8 @@ Here is the script to analyze:
 
       this.printDev(`오디오 Blob URL 생성 완료: ${audioUrl}`);
 
-      return { text: script, audioUrl };
+      const displayText = script.split('\n').slice(1).join('\n');
+      return { text: displayText, audioUrl };
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`오디오 생성 요청 실패: ${error.message}`);
