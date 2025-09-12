@@ -40,6 +40,7 @@ CRITICAL RULES - FOLLOW THESE EXACTLY:
 3. LANGUAGE REQUIREMENT: If a specific language is mentioned (like "스페인어로" = in Spanish), the ENTIRE script must be in that language, including speaker names.(default is English)
 4. CONTENT REQUIREMENT: The script must be about the EXACT topic requested. Do NOT create unrelated content.
 5. LENGTH REQUIREMENT: Follow the requested length (e.g., "5문장" = 5 sentences).
+6. NEVER USE NAMES IN DIALOGUE: Characters must NOT call each other by name during conversation. Use natural dialogue without mentioning speaker names.
 
 FORMAT RULES:
 - For single speaker (monologue): Start with "TTS the following speech by {Speaker Name}:"
@@ -76,7 +77,6 @@ You must follow these rules:
    - Consider the speaker's personality and tone, but GENDER MATCHING is the PRIMARY requirement
 3. Ensure uniqueness: Assign a unique voice to each speaker. Do not reuse a voice for multiple speakers.
 4. Format the output: Please provide the output as a single, valid JSON array that can be directly used by the JSON.parse() function, instead of using Markdown format. Each object in the array should have two keys: 'speaker' (the name of the speaker) and 'voiceConfig'. The 'voiceConfig' object must contain a 'prebuiltVoiceConfig' with a 'voiceName' key, and the value must be one of the voice names from the provided list.
-5. Please ensure the characters do not call each other by name.
 
 Here are the available voices:
 {
@@ -115,28 +115,6 @@ Here are the available voices:
     "Sulafat": "Warm"
   }
 }
-
-# Example
-For a script where "Elena" speaks first and "Ricardo" speaks second:
-[
-  {
-    "speaker": "Elena",
-    "voiceConfig": {
-      "prebuiltVoiceConfig": {"voiceName": "Zephyr"}
-    }
-  },
-  {
-    "speaker": "Ricardo", 
-    "voiceConfig": {
-      "prebuiltVoiceConfig": {"voiceName": "Charon"}
-    }
-  }
-]
-
-IMPORTANT: 
-- Elena appears first in the array because she speaks first in the script
-- Elena gets a FEMALE voice (Zephyr), Ricardo gets a MALE voice (Charon)
-- The array order must match the speaking order in the script
 
 Here is the script to analyze:
 `;
@@ -554,6 +532,7 @@ Here is the script to analyze:
           },
         });
       } else {
+        this.printDev(voiceConfigs.toString());
         response = await this.ai.models.generateContent({
           model: this.models.audio,
           contents: script,
@@ -593,7 +572,13 @@ Here is the script to analyze:
 
       this.printDev(`오디오 Blob URL 생성 완료: ${audioUrl}`);
 
-      const displayText = script.split('\n').slice(1).join('\n');
+      const displayText = script
+        .split('\n')
+        .slice(1)
+        .map((line) => {
+          return line.split(':')[1].trim();
+        })
+        .join('\n');
       return { text: displayText, audioUrl };
     } catch (error) {
       if (error instanceof Error) {

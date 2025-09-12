@@ -130,6 +130,7 @@ export const HowTo: React.FC<HowToProps> = ({ isOpen, onClose }) => {
                   <p className='text-gray-600 dark:text-gray-300'>
                     프롬프트를 입력하면 AI가 어울리는 대본을 자동으로 생성하고
                     자연스러운 음성으로 변환해드립니다.
+                    <br /> (이 기능은 몇 분 정도 걸릴 수 있습니다.)
                   </p>
                 </div>
               </div>
@@ -172,6 +173,10 @@ export const HowTo: React.FC<HowToProps> = ({ isOpen, onClose }) => {
               <p>
                 • 생성된 이미지나 음성은 저작권 등 법적 문제를 고려하여
                 사용하세요.
+              </p>
+              <p>
+                • 음성생성 기능은 아직 테스트버전으로 목소리에 문제가 있을 수
+                있습니다.
               </p>
             </div>
           </div>
