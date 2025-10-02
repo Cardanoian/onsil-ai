@@ -224,141 +224,85 @@ Here is the script to analyze:
   }
 
   // 이미지 생성 함수 (with Nano Banana)
-  // async generateImage(
-  //   messages: Message[]
-  // ): Promise<{ text: string; imageUrl: string }> {
-  //   try {
-  //     // 마지막 사용자 메시지를 이미지 생성 프롬프트로 사용
-  //     const lastMessage = messages[messages.length - 2];
-  //     const text = `Create a picture based on this image and request: ${lastMessage.content}`;
-  //     const inlineData = lastMessage?.file;
-  //     this.printDev(text);
-
-  //     // 공식 문서 예시에 따라 contents 구조 설정
-  //     let contents:
-  //       | string
-  //       | Array<
-  //           | { text: string }
-  //           | { inlineData: { mimeType: string; data: string } }
-  //         >;
-
-  //     if (inlineData && inlineData.mime.includes('image')) {
-  //       // 기존 이미지 + 텍스트로 새 이미지 생성하는 경우
-  //       contents = [
-  //         { text: text },
-  //         {
-  //           inlineData: {
-  //             mimeType: inlineData.mime,
-  //             data: this.cleanBase64Data(inlineData.content),
-  //           },
-  //         },
-  //       ];
-  //     } else {
-  //       // 텍스트만으로 이미지 생성하는 경우 - 공식 예시처럼 단순한 문자열 사용
-  //       contents = text;
-  //     }
-
-  //     const response = await this.ai.models.generateContent({
-  //       model: this.models.image,
-  //       contents,
-  //       config: {
-  //         responseModalities: ['IMAGE'],
-  //       },
-  //     });
-
-  //     if (!response.candidates || response.candidates.length === 0) {
-  //       throw new Error('응답에 후보가 없습니다. API 키 권한을 확인해주세요.');
-  //     }
-
-  //     const candidate = response.candidates[0];
-
-  //     if (!candidate.content || !candidate.content.parts) {
-  //       throw new Error('응답 구조가 올바르지 않습니다.');
-  //     }
-
-  //     // parts 배열을 순회하면서 이미지 데이터 찾기
-  //     let imageData: string | undefined;
-  //     let responseText = '';
-
-  //     for (let i = 0; i < candidate.content.parts.length; i++) {
-  //       const part = candidate.content.parts[i];
-
-  //       if (part.text) {
-  //         responseText += part.text;
-  //       } else if (part.inlineData) {
-  //         imageData = part.inlineData.data;
-  //         break;
-  //       } else {
-  //         this.printDev(`⚠️ 알 수 없는 part 타입: ${Object.keys(part)}`);
-  //       }
-  //     }
-
-  //     if (!imageData) {
-  //       throw new Error(
-  //         `이미지 데이터가 없습니다. 텍스트 응답만 받았습니다.\n\n받은 응답: "${responseText}"\n\n가능한 원인:\n1. API 키에 이미지 생성 권한이 없을 수 있습니다.\n2. 지역 제한으로 이미지 생성 기능을 사용할 수 없을 수 있습니다.\n3. 프롬프트를 더 명확하게 작성해보세요.`
-  //       );
-  //     }
-
-  //     // Base64를 Blob으로 변환하고 URL 생성 (오디오와 동일한 방식)
-  //     const binaryString = atob(imageData);
-  //     const bytes = new Uint8Array(binaryString.length);
-  //     for (let i = 0; i < binaryString.length; i++) {
-  //       bytes[i] = binaryString.charCodeAt(i);
-  //     }
-
-  //     // 이미지 Blob 생성 및 URL 생성
-  //     const imageBlob = new Blob([bytes], { type: 'image/png' });
-  //     const imageUrl = URL.createObjectURL(imageBlob);
-
-  //     return {
-  //       text: responseText || '[이미지 생성 완료]',
-  //       imageUrl,
-  //     };
-  //   } catch (error) {
-  //     if (error instanceof Error) {
-  //       throw new Error(`이미지 생성 요청 실패: ${error.message}`);
-  //     } else {
-  //       throw new Error('이미지 생성 요청 실패: 알 수 없는 오류');
-  //     }
-  //   }
-  // }
-
-  // 새로운 Imagen 4.0 모델을 사용한 이미지 생성 함수
   async generateImage(
     messages: Message[]
   ): Promise<{ text: string; imageUrl: string }> {
     try {
       // 마지막 사용자 메시지를 이미지 생성 프롬프트로 사용
       const lastMessage = messages[messages.length - 2];
-      const prompt = lastMessage.content;
+      const inlineData = lastMessage?.file;
+      const text = `${
+        inlineData ? '이 이미지와 ' : ''
+      }요청을 기반으로 그림을 만들어주세요: ${lastMessage.content}`;
+      this.printDev(text);
 
-      const response = await this.ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
-        prompt: prompt,
+      // 공식 문서 예시에 따라 contents 구조 설정
+      let contents:
+        | string
+        | Array<
+            | { text: string }
+            | { inlineData: { mimeType: string; data: string } }
+          >;
+
+      if (inlineData && inlineData.mime.includes('image')) {
+        // 기존 이미지 + 텍스트로 새 이미지 생성하는 경우
+        contents = [
+          { text: text },
+          {
+            inlineData: {
+              mimeType: inlineData.mime,
+              data: this.cleanBase64Data(inlineData.content),
+            },
+          },
+        ];
+      } else {
+        // 텍스트만으로 이미지 생성하는 경우 - 공식 예시처럼 단순한 문자열 사용
+        contents = text;
+      }
+
+      const response = await this.ai.models.generateContent({
+        model: this.models.image,
+        contents,
         config: {
-          numberOfImages: 1, // 하나의 이미지만 생성
+          responseModalities: ['IMAGE'],
         },
       });
 
-      if (!response.generatedImages || response.generatedImages.length === 0) {
+      if (!response.candidates || response.candidates.length === 0) {
+        throw new Error('응답에 후보가 없습니다. API 키 권한을 확인해주세요.');
+      }
+
+      const candidate = response.candidates[0];
+
+      if (!candidate.content || !candidate.content.parts) {
+        throw new Error('응답 구조가 올바르지 않습니다.');
+      }
+
+      // parts 배열을 순회하면서 이미지 데이터 찾기
+      let imageData: string | undefined;
+      let responseText = '';
+
+      for (let i = 0; i < candidate.content.parts.length; i++) {
+        const part = candidate.content.parts[i];
+
+        if (part.text) {
+          responseText += part.text;
+        } else if (part.inlineData) {
+          imageData = part.inlineData.data;
+          break;
+        } else {
+          this.printDev(`⚠️ 알 수 없는 part 타입: ${Object.keys(part)}`);
+        }
+      }
+
+      if (!imageData) {
         throw new Error(
-          '생성된 이미지가 없습니다. API 키 권한을 확인해주세요.'
+          `이미지 데이터가 없습니다. 텍스트 응답만 받았습니다.\n\n받은 응답: "${responseText}"\n\n가능한 원인:\n1. API 키에 이미지 생성 권한이 없을 수 있습니다.\n2. 지역 제한으로 이미지 생성 기능을 사용할 수 없을 수 있습니다.\n3. 프롬프트를 더 명확하게 작성해보세요.`
         );
       }
 
-      const generatedImage = response.generatedImages[0];
-
-      if (!generatedImage.image || !generatedImage.image.imageBytes) {
-        if (generatedImage.image) {
-          this.printDev(`image 키들: ${Object.keys(generatedImage.image)}`);
-        }
-        throw new Error('이미지 바이트 데이터가 없습니다.');
-      }
-
-      const imageBytes = generatedImage.image.imageBytes;
-
-      // Base64를 Blob으로 변환하고 URL 생성
-      const binaryString = atob(imageBytes);
+      // Base64를 Blob으로 변환하고 URL 생성 (오디오와 동일한 방식)
+      const binaryString = atob(imageData);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
@@ -369,7 +313,7 @@ Here is the script to analyze:
       const imageUrl = URL.createObjectURL(imageBlob);
 
       return {
-        text: '[이미지 생성 완료]',
+        text: responseText || '[이미지 생성 완료]',
         imageUrl,
       };
     } catch (error) {
@@ -380,6 +324,64 @@ Here is the script to analyze:
       }
     }
   }
+
+  // 새로운 Imagen 4.0 모델을 사용한 이미지 생성 함수
+  // async generateImage(
+  //   messages: Message[]
+  // ): Promise<{ text: string; imageUrl: string }> {
+  //   try {
+  //     // 마지막 사용자 메시지를 이미지 생성 프롬프트로 사용
+  //     const lastMessage = messages[messages.length - 2];
+  //     const prompt = lastMessage.content;
+
+  //     const response = await this.ai.models.generateImages({
+  //       model: 'imagen-4.0-generate-001',
+  //       prompt: prompt,
+  //       config: {
+  //         numberOfImages: 1, // 하나의 이미지만 생성
+  //       },
+  //     });
+
+  //     if (!response.generatedImages || response.generatedImages.length === 0) {
+  //       throw new Error(
+  //         '생성된 이미지가 없습니다. API 키 권한을 확인해주세요.'
+  //       );
+  //     }
+
+  //     const generatedImage = response.generatedImages[0];
+
+  //     if (!generatedImage.image || !generatedImage.image.imageBytes) {
+  //       if (generatedImage.image) {
+  //         this.printDev(`image 키들: ${Object.keys(generatedImage.image)}`);
+  //       }
+  //       throw new Error('이미지 바이트 데이터가 없습니다.');
+  //     }
+
+  //     const imageBytes = generatedImage.image.imageBytes;
+
+  //     // Base64를 Blob으로 변환하고 URL 생성
+  //     const binaryString = atob(imageBytes);
+  //     const bytes = new Uint8Array(binaryString.length);
+  //     for (let i = 0; i < binaryString.length; i++) {
+  //       bytes[i] = binaryString.charCodeAt(i);
+  //     }
+
+  //     // 이미지 Blob 생성 및 URL 생성
+  //     const imageBlob = new Blob([bytes], { type: 'image/png' });
+  //     const imageUrl = URL.createObjectURL(imageBlob);
+
+  //     return {
+  //       text: '[이미지 생성 완료]',
+  //       imageUrl,
+  //     };
+  //   } catch (error) {
+  //     if (error instanceof Error) {
+  //       throw new Error(`이미지 생성 요청 실패: ${error.message}`);
+  //     } else {
+  //       throw new Error('이미지 생성 요청 실패: 알 수 없는 오류');
+  //     }
+  //   }
+  // }
 
   private async getScript(prompt: string): Promise<string> {
     try {
