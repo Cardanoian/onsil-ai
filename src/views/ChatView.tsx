@@ -9,10 +9,10 @@ import { devLog } from '../utils/logger';
 export const ChatView: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const lastTick = useRef(performance.now());
+  // const lastTick = useRef(performance.now());
   const controller = useRef(ChatController.getInstance()).current;
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const tickLimit = 300;
+  // const tickLimit = 300;
 
   useEffect(() => {
     setMessages(controller.getMessages());
@@ -24,12 +24,12 @@ export const ChatView: React.FC = () => {
     };
   }, [controller]);
 
-  useEffect(() => {
-    const thisTick = performance.now();
-    if (thisTick - lastTick.current < tickLimit) return;
-    lastTick.current = thisTick;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // useEffect(() => {
+  //   const thisTick = performance.now();
+  //   if (thisTick - lastTick.current < tickLimit) return;
+  //   lastTick.current = thisTick;
+  //   messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // }, [messages]);
 
   const handleSend = async (
     ...args: Parameters<typeof controller.sendMessage>
